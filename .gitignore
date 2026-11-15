@@ -1,4 +1,6 @@
 # Gradle / Android build output
+# The `**/build/` rule also covers source directories named build, so keep
+# package directories free of that name.
 .gradle/
 .kotlin/
 build/

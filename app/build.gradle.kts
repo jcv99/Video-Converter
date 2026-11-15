@@ -1,4 +1,4 @@
-import org.videoconverter.build.ReleaseVersion
+import org.videoconverter.release.ReleaseVersion
 
 plugins {
     id("com.android.application") version "9.5.1"
