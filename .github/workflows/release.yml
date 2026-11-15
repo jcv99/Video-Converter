@@ -1,0 +1,170 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish the APK for, for example v0.2.0'
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: release-apk-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the signed release APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version_name: ${{ steps.meta.outputs.version_name }}
+    steps:
+      - name: Resolve the release tag
+        id: meta
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG#refs/tags/}"
+          if [[ -z "$tag" ]]; then
+            echo "No release tag found for this event." >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version_name=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "Release tag $tag, version ${tag#v}"
+
+      - name: Check out the tagged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install the Android SDK packages
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "platform-tools" "build-tools;36.0.0" "ndk;28.2.13676358"
+          # The platform carries a minor version, the plain id stays as a fallback.
+          sdkmanager --install "platforms;android-37.0" || sdkmanager --install "platforms;android-37"
+
+      - name: Cache the native build tree
+        uses: actions/cache@v4
+        with:
+          path: app/build/native
+          key: native-${{ runner.os }}-${{ hashFiles('scripts/build-native.sh', 'native/converter.c') }}
+
+      - name: Restore the release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 KEY_ALIAS STORE_PASSWORD KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "The secret ANDROID_$name is missing." >&2
+              exit 1
+            fi
+          done
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          chmod 600 "$RUNNER_TEMP/release.keystore"
+
+      - name: Reuse the APK of an earlier build of this commit
+        id: reuse
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          run_id="$(gh run list --workflow release.yml --commit "$sha" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+          if [[ -z "$run_id" ]]; then
+            echo "No earlier successful run for $sha, the APK is built here."
+            exit 0
+          fi
+          mkdir -p dist
+          gh run download "$run_id" --name app-release-apk --dir dist
+          echo "reused=true" >> "$GITHUB_OUTPUT"
+          echo "Reused the APK of run $run_id."
+
+      - name: Build the signed release APK
+        if: steps.reuse.outputs.reused != 'true'
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VIDEO_CONVERTER_JOBS: 4
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if ! ./gradlew :buildSrc:test :app:assembleRelease --stacktrace; then
+            echo "The build failed, retrying once with a clean native tree."
+            rm -rf app/build/native
+            ./gradlew :app:assembleRelease --stacktrace
+          fi
+          cp app/build/outputs/apk/release/app-release.apk "dist/video-converter-${{ steps.meta.outputs.version_name }}.apk"
+
+      - name: Verify the APK signature
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs dist/*.apk
+
+      - name: Store the APK as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+  publish:
+    name: Attach the APK to the release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Download the release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: app-release-apk
+          path: dist
+
+      - name: Attach the APK to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "No release for $TAG yet. The APK stays in the workflow artifacts until the release is published."
+            exit 0
+          fi
+          gh release upload "$TAG" dist/*.apk --clobber --repo "$GITHUB_REPOSITORY"
+          echo "Attached the APK to release $TAG."
