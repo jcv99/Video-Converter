@@ -1,0 +1,81 @@
+# Gradle / Android build output
+.gradle/
+.kotlin/
+build/
+**/build/
+local.properties
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# Native build artefacts
+native/.work/
+native/out/
+*.o
+*.so
+!app/src/main/jniLibs/**/*.so
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.code-workspace
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# Test and coverage output
+test-results/
+reports/
+coverage/
+*.hprof
+
+# Local secrets and machine-specific config
+.env
+.env.*
+!.env.example
+secrets.properties
+keystore.properties
+*.jks
+*.keystore
+
+# AI coding assistants
+AGENTS.md
+AGENTS.override.md
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
+.codex/
+.claude/
+.agents/
+.gemini/
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+.continue/
+.aider*
+.opencode/
+opencode.json
+opencode.jsonc
+.mcp.json
+.github/copilot-instructions.md
+.github/instructions/*.instructions.md
+.github/prompts/*.prompt.md
+.github/agents/*.agent.md
