@@ -1,5 +1,6 @@
 #include <android/log.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <jni.h>
 #include <math.h>
 #include <stdint.h>
@@ -806,4 +807,21 @@ JNIEXPORT jboolean JNICALL Java_org_videoconverter_app_NativeConverter_canConver
     JNIEnv *env, jobject self, jint fd, jobject callback) {
     (void) self;
     return convert(env, fd, NULL, 0, 0, 0, 0, callback) == 0 ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jint JNICALL Java_org_videoconverter_app_NativeConverter_setNonblocking(
+    JNIEnv *env, jobject self, jint fd) {
+    (void) env;
+    (void) self;
+    int flags;
+    do {
+        flags = fcntl(fd, F_GETFL);
+    } while (flags < 0 && errno == EINTR);
+    if (flags < 0) return errno;
+
+    int result;
+    do {
+        result = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    } while (result < 0 && errno == EINTR);
+    return result < 0 ? errno : 0;
 }

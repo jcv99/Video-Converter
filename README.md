@@ -1,6 +1,6 @@
 # Video Converter
 
-Extract audio from videos and convert audio files in batches on Android 11 or newer. Video Converter uses bundled FFmpeg and LAME libraries to convert files entirely on your device. It works offline and requires no account or telemetry.
+Extract audio from videos and convert audio files in batches on Android 10 or newer. Video Converter uses bundled FFmpeg and LAME libraries to convert files entirely on your device. It works offline and requires no account or telemetry.
 
 ## Convert files
 
@@ -35,7 +35,7 @@ The native build script expects an **x86-64 Linux** host. Install the following 
 
 - A JDK to launch the Gradle wrapper. The project selects **Java 25** for the Gradle daemon and targets Java 17 bytecode.
 - Android SDK Platform **37**, Build Tools **36.0.0**, and NDK **28.2.13676358**. Set `JAVA_HOME` to your launcher JDK and `ANDROID_HOME` to the SDK directory.
-- Bash, GNU Make, binutils, curl, tar, xz, pkg-config, and Python 3. Install ADB to deploy to a device or emulator.
+- Bash, a C11 host compiler and C library headers, GNU Make, binutils, curl, tar, xz, pkg-config, and Python 3. Install ADB to deploy to a device or emulator.
 
 From the repository root, build a debug APK with the Gradle 9.6.0 wrapper:
 
@@ -43,7 +43,7 @@ From the repository root, build a debug APK with the Gradle 9.6.0 wrapper:
 ./gradlew :app:assembleDebug
 ```
 
-The APK at `app/build/outputs/apk/debug/app-debug.apk` includes native libraries for `arm64-v8a` and `x86_64`. Install it on a connected Android 11+ device or emulator:
+The APK at `app/build/outputs/apk/debug/app-debug.apk` includes native libraries for `arm64-v8a` and `x86_64`. Install it on a connected Android 10+ device or emulator:
 
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk

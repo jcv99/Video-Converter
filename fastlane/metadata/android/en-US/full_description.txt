@@ -1,0 +1,7 @@
+Convert audio files and extract the first audio track from videos on your device. Video Converter works offline without accounts or telemetry.
+
+Pick files, share them from another app, or scan a folder and its subfolders. Export MP3, AAC, ALAC, Opus, Vorbis, FLAC, or WAV. Save to Downloads/VideoConverter or choose a destination folder. You can keep the input folder structure when exporting.
+
+Save conversion presets, trim leading and trailing silence, and normalize loudness. Run files in parallel, follow progress in a notification, and retry unfinished files after an interruption while keeping completed exports.
+
+Requires Android 10 or newer and an arm64-v8a or x86_64 device.

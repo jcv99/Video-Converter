@@ -1,0 +1,1 @@
+Adds Android 10 support, including batch exports to Downloads and recovery of interrupted batches. Native conversion libraries are now built for Android 10.

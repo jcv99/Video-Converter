@@ -5,8 +5,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"
 }
 
-// The release tag drives the version of a release build. Local builds keep the defaults.
-val releaseTag = providers.environmentVariable("RELEASE_TAG").orNull
+// CI and downstream packagers build with the same version derived from a release tag.
+val releaseTag = providers.environmentVariable("RELEASE_TAG")
+    .orElse(providers.gradleProperty("releaseTag")).orNull
 val releaseVersion = releaseTag?.let { ReleaseVersion.parse(it) }
 val releaseKeystore = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
 
@@ -17,7 +18,7 @@ android {
 
     defaultConfig {
         applicationId = "org.videoconverter.app"
-        minSdk = 30
+        minSdk = 29
         targetSdk = 37
         testInstrumentationRunner = "org.videoconverter.app.ConversionMatrixTest"
         versionCode = releaseVersion?.code ?: 1
@@ -79,12 +80,15 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 }
 
 val sdkDirectory = androidComponents.sdkComponents.sdkDirectory
-val buildNative by tasks.registering(Exec::class) {
-    inputs.files(rootProject.file("native/converter.c"), rootProject.file("scripts/build-native.sh"))
+val nativeNdk = sdkDirectory.map { it.dir("ndk/${android.ndkVersion}") }
+val nativeApi = android.defaultConfig.minSdk!!
+val buildNative = tasks.register<Exec>("buildNative") {
+    inputs.files(rootProject.file("native/converter.c"), rootProject.file("scripts/build-native.sh"),
+        nativeNdk.map { it.file("source.properties") })
+    inputs.property("androidApi", nativeApi)
     outputs.dir(layout.buildDirectory.dir("native/jniLibs"))
     commandLine("bash", rootProject.file("scripts/build-native.sh"),
-        sdkDirectory.get().asFile.resolve("ndk/28.2.13676358"),
-        layout.buildDirectory.dir("native").get().asFile)
+        nativeNdk.get().asFile, layout.buildDirectory.dir("native").get().asFile, nativeApi)
 }
 tasks.named("preBuild") { dependsOn(buildNative) }
 

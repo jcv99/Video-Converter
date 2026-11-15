@@ -122,6 +122,9 @@ public class ConversionMatrixTest : Instrumentation() {
                 val write = OutputWrite(reserved, bytes.size.toLong(), digest, phase in setOf("ready", "published"))
                 val uri = Storage.createOutput(context, reserved, "audio/wav")
                 uris += uri
+                check(Storage.findReservedDownload(context, reserved) == uri) {
+                    "Pending Downloads row cannot be recovered: $phase ($uri)"
+                }
                 if (phase != "allocated") {
                     checkNotNull(context.contentResolver.openOutputStream(uri)).use {
                         it.write(if (phase == "partial") bytes.copyOf(2) else bytes)
@@ -207,8 +210,8 @@ public class ConversionMatrixTest : Instrumentation() {
                     if (cancelled.get()) throw java.io.InterruptedIOException("Cancelled")
                 }
                 runCatching {
-                    if (reading) Storage.readPipe(read.fileDescriptor, java.io.OutputStream.nullOutputStream(), checkActive)
-                    else Storage.writePipe(write.fileDescriptor, ByteArray(256 * 1024).inputStream(), checkActive)
+                    if (reading) Storage.readPipe(read, java.io.ByteArrayOutputStream(), checkActive)
+                    else Storage.writePipe(write, ByteArray(256 * 1024).inputStream(), checkActive)
                 }.exceptionOrNull()
             }
             val worker = Thread(result).apply { isDaemon = true }

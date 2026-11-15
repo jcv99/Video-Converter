@@ -328,4 +328,5 @@ internal object NativeConverter {
         fd: Int, output: String, target: Int, bitrate: Int, trimSilence: Boolean, loudness: Int, progress: Progress,
     ): Int
     external fun canConvert(fd: Int, progress: Progress): Boolean
+    external fun setNonblocking(fd: Int): Int
 }
