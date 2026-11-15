@@ -41,9 +41,9 @@ build without a tag keeps the versions `0.1.0` and `1`.
    ```
 
    The tag build starts on its own and stores the APK as a workflow artifact.
-   It takes roughly 30 to 50 minutes on a cold runner because the native
-   libraries are compiled for `arm64-v8a` and `x86_64`. Later runs reuse the
-   cached native build tree.
+   It takes about four minutes on a cold runner, because the native libraries
+   are compiled for `arm64-v8a` and `x86_64`. Later runs reuse the cached native
+   build tree.
 
 3. Publish the release. The workflow attaches the APK to it.
 
