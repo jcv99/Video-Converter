@@ -88,8 +88,40 @@ different signatures. Uninstall the debug build first.
 
 ## Native build cache
 
-The workflow caches `app/build/native` under a key made of the hash of
-`scripts/build-native.sh` and `native/converter.c`. A change to the native
-bridge or to the build script produces a new key and a fresh native build. A
-build that fails with a restored cache is retried once with a clean native
-tree.
+The workflow caches `app/build/native` using the Gradle app configuration,
+native build script, and JNI source. Within that cache, native builds are
+keyed by API level, ABI, NDK revision, and source inputs. The release workflow
+retries once with a clean native tree after a build failure.
+
+## F-Droid
+
+F-Droid builds and signs its own APK. Android requires a reinstall when
+switching between APKs signed by GitHub releases and F-Droid. Finish or
+cancel active batches before uninstalling and save any app settings you need.
+
+1. Merge the Android 10 changes and publish the verified `v0.2.0` tag. The
+   current release scheme gives it version code 200.
+2. Copy [the recipe](fdroid/org.videoconverter.app.yml) into the `metadata/`
+   directory of a local `fdroiddata` checkout. Replace the build's `commit`
+   value with the full SHA of the tagged commit. Leave `releaseTag=v0.2.0`
+   in `gradleprops` so the APK gets the same version as the GitHub release.
+3. Run the source and APK checks in the [F-Droid build environment](https://f-droid.org/docs/Submitting_to_F-Droid_Quick_Start_Guide/).
+
+   ```bash
+   rtk run fdroid rewritemeta org.videoconverter.app
+   rtk run fdroid lint org.videoconverter.app
+   rtk run fdroid checkupdates --allow-dirty org.videoconverter.app
+   rtk run fdroid build org.videoconverter.app:200
+   ```
+
+4. Submit the recipe to `fdroiddata` once the app meets the
+   [inclusion policy](https://f-droid.org/docs/Inclusion_Policy/). Based on the
+   public development history beginning November 15, 2026, the three-month
+   threshold is February 15, 2027 if development remains active. Document
+   any applicable earlier-development evidence or policy exception in the
+   submission. After publication, install the build from the main F-Droid
+   repository and smoke-test an offline batch.
+
+For later releases, update the recipe manually with the new commit, tag, and
+version code. The APK version comes from the tag passed to Gradle, so F-Droid
+cannot infer it from the fallback version in the source.
