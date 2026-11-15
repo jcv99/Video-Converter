@@ -51,6 +51,18 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 The build runs `:app:buildNative` automatically. It downloads and verifies the pinned FFmpeg, LAME, libogg, libvorbis, and Opus archives before compiling them. To skip those downloads, place the five archives in `app/build/native/` using the filenames and SHA-256 hashes in [the native build script](scripts/build-native.sh).
 
+## Releases
+
+Push a `v*` tag and publish a GitHub release. The release workflow builds the signed release APK and attaches it to the release automatically.
+
+```bash
+rtk run git tag -a v0.2.0 -m "Video Converter 0.2.0"
+rtk run git push origin v0.2.0
+rtk run gh release create v0.2.0 --generate-notes --title "Video Converter 0.2.0"
+```
+
+The tag carries the version: `v0.2.0` builds version `0.2.0` with version code `200`. See [the release guide](docs/releases.md) for the signing secrets, the version code rules, and how to retry a failed build.
+
 ## Tests
 
 Run JVM tests and Android lint:
