@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: JVM tests and lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      VIDEO_CONVERTER_JOBS: 4
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install the Android SDK packages
+        run: |
+          set -euo pipefail
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | sort -V | tail -1)"
+          if [[ -z "$sdkmanager" ]]; then
+            echo "No sdkmanager found under $ANDROID_HOME/cmdline-tools" >&2
+            exit 1
+          fi
+          yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$sdkmanager" --install "platform-tools" "build-tools;36.0.0" "ndk;28.2.13676358"
+          "$sdkmanager" --install "platforms;android-37.0" || "$sdkmanager" --install "platforms;android-37"
+
+      - name: Run JVM tests and Android lint
+        run: ./gradlew :buildSrc:test :app:testDebugUnitTest :app:lintDebug
