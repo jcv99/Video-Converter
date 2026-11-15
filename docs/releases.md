@@ -10,8 +10,11 @@ signed APK and attaches it to the release.
 | Event | What happens |
 | --- | --- |
 | A tag matching `v*` is pushed | The signed APK is built and stored as a workflow artifact. It is attached to the release right away when a release for that tag already exists. |
-| A GitHub release is published | The APK of the tag build is reused, or built from scratch when no earlier build exists, and attached to the release. |
-| A manual run | The same, for the tag given as input. |
+| A GitHub release is published | A fresh APK is built from the release tag and attached to the release. |
+| A manual run | A fresh APK is built from the input tag and attached if the release exists. |
+
+Each run verifies the APK signature and checks that the version name matches
+the tag before uploading it. Runs can reuse the native build cache.
 
 The release event only fires for workflows that live on the default branch, so
 the workflow file has to be merged into `main` before the first release.

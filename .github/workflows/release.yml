@@ -14,8 +14,7 @@ on:
         type: string
 
 permissions:
-  actions: read
-  contents: write
+  contents: read
 
 concurrency:
   group: release-apk-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
@@ -31,7 +30,6 @@ jobs:
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
-      version_name: ${{ steps.meta.outputs.version_name }}
     steps:
       - name: Resolve the release tag
         id: meta
@@ -40,8 +38,8 @@ jobs:
         run: |
           set -euo pipefail
           tag="${RELEASE_TAG#refs/tags/}"
-          if [[ -z "$tag" ]]; then
-            echo "No release tag found for this event." >&2
+          if [[ "$tag" != v* ]] || ! git check-ref-format "refs/tags/$tag"; then
+            echo "Expected a valid release tag starting with v." >&2
             exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -51,7 +49,8 @@ jobs:
       - name: Check out the tagged commit
         uses: actions/checkout@v5
         with:
-          ref: ${{ steps.meta.outputs.tag }}
+          ref: refs/tags/${{ steps.meta.outputs.tag }}
+          persist-credentials: false
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -81,6 +80,9 @@ jobs:
           path: app/build/native
           key: native-${{ runner.os }}-${{ hashFiles('app/build.gradle.kts', 'scripts/build-native.sh', 'native/converter.c') }}
 
+      - name: Test release versioning
+        run: ./gradlew :buildSrc:test
+
       - name: Restore the release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -98,28 +100,10 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
           chmod 600 "$RUNNER_TEMP/release.keystore"
 
-      - name: Reuse the APK of an earlier build of this commit
-        id: reuse
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          sha="$(git rev-parse HEAD)"
-          run_id="$(gh run list --workflow release.yml --commit "$sha" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
-          if [[ -z "$run_id" ]]; then
-            echo "No earlier successful run for $sha, the APK is built here."
-            exit 0
-          fi
-          mkdir -p dist
-          gh run download "$run_id" --name app-release-apk --dir dist
-          echo "reused=true" >> "$GITHUB_OUTPUT"
-          echo "Reused the APK of run $run_id."
-
       - name: Build the signed release APK
-        if: steps.reuse.outputs.reused != 'true'
         env:
           RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          EXPECTED_VERSION: ${{ steps.meta.outputs.version_name }}
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
@@ -128,19 +112,26 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          if ! ./gradlew :buildSrc:test :app:assembleRelease --stacktrace; then
+          if ! ./gradlew :app:assembleRelease --stacktrace; then
             echo "The build failed, retrying once with a clean native tree."
             rm -rf app/build/native
             ./gradlew :app:assembleRelease --stacktrace
           fi
-          cp app/build/outputs/apk/release/app-release.apk "dist/video-converter-${{ steps.meta.outputs.version_name }}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "dist/video-converter-$EXPECTED_VERSION.apk"
 
-      - name: Verify the APK signature
+      - name: Verify the APK signature and version
         env:
-          KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          EXPECTED_VERSION: ${{ steps.meta.outputs.version_name }}
         run: |
           set -euo pipefail
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs dist/*.apk
+          apk="dist/video-converter-$EXPECTED_VERSION.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk"
+          actual_version="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" |
+            sed -n "s/^package: .*versionName='\([^']*\)'.*$/\1/p")"
+          if [[ "$actual_version" != "$EXPECTED_VERSION" ]]; then
+            echo "Expected APK version $EXPECTED_VERSION, found $actual_version." >&2
+            exit 1
+          fi
 
       - name: Store the APK as a workflow artifact
         uses: actions/upload-artifact@v4
@@ -154,6 +145,8 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: write
     steps:
       - name: Download the release APK
         uses: actions/download-artifact@v4
