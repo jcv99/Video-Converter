@@ -1,87 +1,70 @@
 # Video Converter
 
-Offline batch audio extraction and conversion for **Android 11 and newer (API 30+)**. No network, no account, no telemetry: every file is decoded and re-encoded on device by a bundled FFmpeg build.
+Extract audio from videos and convert audio files in batches on Android 11 or newer. Video Converter uses bundled FFmpeg and LAME libraries to convert files entirely on your device. It works offline and requires no account or telemetry.
 
-Pick files with **Pick files**, share them into the app from any Android share menu, or use **Pick input folder** to scan a folder tree. Review the selection, remove what you do not want, and tap **Convert to…**.
+## Convert files
 
-## Features
+1. Tap **Pick files**, send files to Video Converter through Android's **Share** menu, or tap **Pick input folder** to scan a folder and its subfolders.
+2. Select an **Output format**. For MP3, choose 128, 192, or 320 kbps.
+3. Leave the destination at **Downloads/VideoConverter** or tap **Choose folder**. Folder imports preserve the subfolder layout by default. Turn off **Preserve folder structure** to export everything into one folder.
+4. Tap **Convert to …**. Follow progress in the app or in the foreground service notification. Tap **Open** next to a saved file to play it in another app.
 
-- **Batch conversion** — decode the first audio track of each input and write the result to the destination folder.
-- **Input formats** — WebM, Ogg Vorbis, Ogg Opus, MP4, MKV, MOV, WAV, FLAC and M4A.
-- **Output formats** — MP3 (128 / 192 / 320 kbps), AAC or ALAC in M4A, Opus or Vorbis in Ogg, FLAC, and 16-bit PCM WAV.
-- **Folder import** — scan a folder and its subfolders; the subfolder layout is mirrored in the output unless **Preserve folder structure** is turned off.
-- **Loudness normalisation** — measure the audio *after* any silence trim and apply a target of −14, −16 or −23 LUFS, with gain limited so the pre-encode true peak stays at or below −1 dBTP.
-- **Silence trimming** — remove leading and trailing silence with a fade-out on the trimmed tail.
-- **Presets** — save the format, quality, loudness, trimming, folder-structure and destination settings for reuse in later batches.
-- **Foreground service** — conversions run in a foreground service, so progress and cancellation stay available from the notification drawer.
-- **Durable output journal** — every export is reconciled on recovery, so an interrupted batch never deletes a finished file.
-- **Retry** — failed items can be retried with the settings they were submitted with.
+## Formats
 
-The default destination is **Downloads/VideoConverter**. Use **Choose folder** to pick a different one and **Remember this folder** to keep it for future batches.
+Input examples include MP4, MKV, MOV, WebM, WAV, FLAC, M4A, and Ogg. Each input needs a decodable audio track. When a file contains multiple audio tracks, the app uses the first.
 
-## Requirements
-
-| Component | Version |
+| Export format | File extension |
 | --- | --- |
-| JDK | 17 or 21 |
-| Android SDK Platform | 37 (compile platform) |
-| Android Build Tools | 36.0.0 |
-| Android NDK | 28.2.13676358 |
-| Gradle | 9.6.0 (via the wrapper) |
-| Host tools | Bash, GNU Make, binutils, curl, tar, xz, pkg-config, Python 3 |
+| MP3 | `.mp3` |
+| AAC or ALAC | `.m4a` |
+| Opus or Vorbis | `.ogg` |
+| FLAC | `.flac` |
+| 16-bit PCM WAV | `.wav` |
 
-Set `JAVA_HOME` to your JDK and `ANDROID_HOME` to your SDK. The app runs on Android 11 (API 30) and newer.
+## Batch settings
 
-## Build
+- **Trim silence** removes leading and trailing silence and fades out the trimmed tail.
+- **Normalize loudness** targets −14, −16, or −23 LUFS after silence trimming. Gain is limited to keep the pre-encode true peak at or below −1 dBTP.
+- **Presets** save the format, MP3 quality, trimming, loudness, folder layout, and destination. Use **Remember this folder** to keep a custom destination available for later batches.
+- **Options → Parallel files** sets the maximum number of simultaneous conversions for the next batch, from 1 to 50. The default is 20.
+- **Retry unfinished files** reuses the submitted conversion settings. The app uses an output journal to preserve completed exports when recovering an interrupted batch.
 
-```bash
-rtk run ./gradlew :app:assembleDebug
-```
+## Build and install
 
-The debug-signed APK lands in `app/build/outputs/apk/debug/app-debug.apk` and contains the `arm64-v8a` and `x86_64` native libraries.
+The native build script expects an **x86-64 Linux** host. Install the following before building:
 
-The first build fetches the checksum-pinned native sources (FFmpeg 8.1.3 and LAME 3.100) and compiles them. To build without network access, place the five source archives named by the native build script in `app/build/native/` first; the exact upstream URLs and SHA-256 hashes are in `scripts/build-native.sh`.
+- A JDK to launch the Gradle wrapper. The project selects **Java 25** for the Gradle daemon and targets Java 17 bytecode.
+- Android SDK Platform **37**, Build Tools **36.0.0**, and NDK **28.2.13676358**. Set `JAVA_HOME` to your launcher JDK and `ANDROID_HOME` to the SDK directory.
+- Bash, GNU Make, binutils, curl, tar, xz, pkg-config, and Python 3. Install ADB to deploy to a device or emulator.
 
-## Test
-
-Unit tests:
-
-```bash
-rtk run ./gradlew :app:testDebugUnitTest
-```
-
-End-to-end conversion tests run on a connected device. Generate a short FFmpeg fixture corpus with:
+From the repository root, build a debug APK with the Gradle 9.6.0 wrapper:
 
 ```bash
-rtk run python3 scripts/conversion-matrix.py generate /tmp/video-converter-matrix
+./gradlew :app:assembleDebug
 ```
 
-The generated manifest lists compatible files, unsupported cases and input checksums. Verify the pulled exports with:
+The APK at `app/build/outputs/apk/debug/app-debug.apk` includes native libraries for `arm64-v8a` and `x86_64`. Install it on a connected Android 11+ device or emulator:
 
 ```bash
-rtk run python3 scripts/conversion-matrix.py verify MANIFEST EXPORT_DIRECTORY
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The full ADB procedure — instrumented runs, recovery checks, midstream and silence-trim scenarios, and the UI smoke test — is documented in [docs/implementation.md](docs/implementation.md).
+The build runs `:app:buildNative` automatically. It downloads and verifies the pinned FFmpeg, LAME, libogg, libvorbis, and Opus archives before compiling them. To skip those downloads, place the five archives in `app/build/native/` using the filenames and SHA-256 hashes in [the native build script](scripts/build-native.sh).
 
-## Project layout
+## Tests
 
-```
-app/                       Android application module (Kotlin, Jetpack Compose)
-  src/main/java/           UI, batch orchestration, foreground service, presets, storage
-  src/main/assets/         Licence texts for the bundled native libraries
-  src/test/                JVM unit tests
-  src/androidTest/         Instrumented conversion matrix tests
-native/converter.c         JNI bridge to FFmpeg and LAME (decode, loudness, encode)
-scripts/build-native.sh    Downloads, verifies and builds the native libraries
-scripts/conversion-matrix.py  Fixture generation and verification
-docs/implementation.md     Device test procedure
+Run JVM tests and Android lint:
+
+```bash
+./gradlew :app:testDebugUnitTest :app:lintDebug
 ```
 
-## Licences
+The [device test guide](docs/implementation.md) covers generating fixtures with FFmpeg, installing the instrumentation APK, running the conversion matrix and recovery checks, and verifying exported files with FFprobe.
 
-The project code is licensed under **GPL-3.0-or-later** — see [LICENSE](LICENSE).
+## Source and licences
 
-The app ships shared libraries built from **FFmpeg 8.1.3** and **LAME 3.100**, licensed under **LGPL-2.1-or-later** — see [docs/LGPL-2.1.txt](docs/LGPL-2.1.txt). Their complete source archives and build settings are identified by `scripts/build-native.sh`, which also documents the installed library name changes required for Android. You may rebuild and install the app with a compatible replacement library using that same script.
+- [Android app](app/src/main/java/org/videoconverter/app) contains the Kotlin and Jetpack Compose UI, foreground service, presets, and storage code.
+- [Native bridge](native/converter.c) handles decoding, silence trimming, loudness normalization, and encoding.
+- [Conversion matrix script](scripts/conversion-matrix.py) generates fixtures and verifies exports.
 
-AndroidX and Compose dependencies are used under Apache 2.0. Third-party licence texts are bundled in `app/src/main/assets/`.
+The app is licensed under [GPL-3.0-or-later](LICENSE). It dynamically links FFmpeg 8.1.3 and LAME 3.100 under [LGPL-2.1-or-later](docs/LGPL-2.1.txt). FFmpeg includes libogg, libvorbis, and Opus under BSD-style licences. The APK bundles [third-party notices and licence texts](app/src/main/assets). The [native build script](scripts/build-native.sh) records upstream sources and build flags and can rebuild compatible shared libraries for the APK.
