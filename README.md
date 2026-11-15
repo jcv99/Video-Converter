@@ -2,6 +2,12 @@
 
 Extract audio from videos and convert audio files in batches on Android 10 or newer. Video Converter uses bundled FFmpeg and LAME libraries to convert files entirely on your device. It works offline and requires no account or telemetry.
 
+[**Download for Android 10+**](https://github.com/jcv99/Video-Converter/releases/latest)
+
+Open **Assets** on the release page and download the `.apk` file.
+
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" alt="Video Converter app on Android" width="260">
+
 ## Convert files
 
 1. Tap **Pick files**, send files to Video Converter through Android's **Share** menu, or tap **Pick input folder** to scan a folder and its subfolders.
@@ -53,15 +59,7 @@ The build runs `:app:buildNative` automatically. It downloads and verifies the p
 
 ## Releases
 
-Push a `v*` tag and publish a GitHub release. The release workflow builds the signed release APK and attaches it to the release automatically.
-
-```bash
-rtk run git tag -a v0.2.0 -m "Video Converter 0.2.0"
-rtk run git push origin v0.2.0
-rtk run gh release create v0.2.0 --generate-notes --title "Video Converter 0.2.0"
-```
-
-The tag carries the version: `v0.2.0` builds version `0.2.0` with version code `200`. See [the release guide](docs/releases.md) for the signing secrets, the version code rules, and how to retry a failed build.
+See the [maintainer release guide](docs/releases.md) for versioning, signing, and publishing.
 
 ## Tests
 
