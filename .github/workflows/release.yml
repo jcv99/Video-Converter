@@ -26,6 +26,9 @@ jobs:
     name: Build the signed release APK
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version_name: ${{ steps.meta.outputs.version_name }}
@@ -59,16 +62,18 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Set up the Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install the Android SDK packages
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager --install "platform-tools" "build-tools;36.0.0" "ndk;28.2.13676358"
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | sort -V | tail -1)"
+          if [[ -z "$sdkmanager" ]]; then
+            echo "No sdkmanager found under $ANDROID_HOME/cmdline-tools" >&2
+            exit 1
+          fi
+          yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$sdkmanager" --install "platform-tools" "build-tools;36.0.0" "ndk;28.2.13676358"
           # The platform carries a minor version, the plain id stays as a fallback.
-          sdkmanager --install "platforms;android-37.0" || sdkmanager --install "platforms;android-37"
+          "$sdkmanager" --install "platforms;android-37.0" || "$sdkmanager" --install "platforms;android-37"
 
       - name: Cache the native build tree
         uses: actions/cache@v4
