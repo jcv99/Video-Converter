@@ -1,7 +1,14 @@
+import org.videoconverter.build.ReleaseVersion
+
 plugins {
     id("com.android.application") version "9.5.1"
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"
 }
+
+// The release tag drives the version of a release build. Local builds keep the defaults.
+val releaseTag = providers.environmentVariable("RELEASE_TAG").orNull
+val releaseVersion = releaseTag?.let { ReleaseVersion.parse(it) }
+val releaseKeystore = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
 
 android {
     namespace = "org.videoconverter.app"
@@ -13,9 +20,26 @@ android {
         minSdk = 30
         targetSdk = 37
         testInstrumentationRunner = "org.videoconverter.app.ConversionMatrixTest"
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersion?.code ?: 1
+        versionName = releaseVersion?.name ?: "0.1.0"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+    }
+    signingConfigs {
+        create("release") {
+            if (releaseKeystore != null) {
+                storeFile = file(releaseKeystore)
+                storePassword = providers.environmentVariable("ANDROID_STORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            if (releaseKeystore != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
     buildFeatures { compose = true }
     compileOptions {
