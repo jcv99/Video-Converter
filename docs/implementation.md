@@ -2,39 +2,39 @@
 
 Use an Android 10 (API 29) device or emulator for the minimum-version check and a recent ARM64 device for regression testing. Use the debug signing key of any installed
 copy of Video Converter. Run from the project directory with FFmpeg, FFprobe,
-Python 3, ADB, and RTK available.
+Python 3, and ADB available.
 
 ```bash
 set -euo pipefail
-run=matrix-$(rtk run date +%Y%m%d-%H%M%S)
+run=matrix-$(date +%Y%m%d-%H%M%S)
 local_run="/tmp/video-converter-$run"
 phone_run="/sdcard/Download/VideoConverterTest/$run"
-rtk run python3 scripts/conversion-matrix.py generate "$local_run"
-rtk run ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
-rtk run adb install -r -g app/build/outputs/apk/debug/app-debug.apk
-rtk run adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-rtk run adb shell mkdir -p "$phone_run"
-rtk run adb push "$local_run/inputs" "$local_run/manifest.json" "$phone_run/"
-rtk run adb shell "cd $phone_run && sha256sum manifest.json inputs/*" > "$local_run/phone.sha256"
+python3 scripts/conversion-matrix.py generate "$local_run"
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+adb install -r -g app/build/outputs/apk/debug/app-debug.apk
+adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell mkdir -p "$phone_run"
+adb push "$local_run/inputs" "$local_run/manifest.json" "$phone_run/"
+adb shell "cd $phone_run && sha256sum manifest.json inputs/*" > "$local_run/phone.sha256"
 (
     cd "$local_run"
-    rtk run sha256sum -c phone.sha256
+    sha256sum -c phone.sha256
 )
-rtk run adb shell run-as org.videoconverter.app mkdir -p files/conversion-matrix
-rtk run adb shell run-as org.videoconverter.app rm -rf files/conversion-matrix/inputs
-fixture_uid=$(rtk run adb shell run-as org.videoconverter.app id -u)
-fixture_gid=$(rtk run adb shell run-as org.videoconverter.app id -g)
-rtk run tar --owner="$fixture_uid" --group="$fixture_gid" --numeric-owner -C "$local_run" -cf - inputs midstream.aac |
-    rtk run adb shell -T 'run-as org.videoconverter.app tar -xf - -C files/conversion-matrix'
-rtk run adb shell "echo $run | run-as org.videoconverter.app tee files/conversion-matrix/run-id"
-rtk run adb shell am instrument -w org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
-rtk run adb shell am instrument -w -e recoverVideo true org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
-rtk run adb shell am instrument -w -e recovery true org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
-rtk run adb shell am instrument -w -e midstream true org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
-rtk run adb shell am instrument -w -e trimSilence true org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
-rtk run adb pull "$phone_run" "$local_run/exports"
-rtk run python3 scripts/conversion-matrix.py verify "$local_run/manifest.json" "$local_run/exports" |
-    rtk run tee "$local_run/report.txt"
+adb shell run-as org.videoconverter.app mkdir -p files/conversion-matrix
+adb shell run-as org.videoconverter.app rm -rf files/conversion-matrix/inputs
+fixture_uid=$(adb shell run-as org.videoconverter.app id -u)
+fixture_gid=$(adb shell run-as org.videoconverter.app id -g)
+tar --owner="$fixture_uid" --group="$fixture_gid" --numeric-owner -C "$local_run" -cf - inputs midstream.aac |
+    adb shell -T 'run-as org.videoconverter.app tar -xf - -C files/conversion-matrix'
+adb shell "echo $run | run-as org.videoconverter.app tee files/conversion-matrix/run-id"
+adb shell am instrument -w org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
+adb shell am instrument -w -e recoverVideo true org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
+adb shell am instrument -w -e recovery true org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
+adb shell am instrument -w -e midstream true org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
+adb shell am instrument -w -e trimSilence true org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
+adb pull "$phone_run" "$local_run/exports"
+python3 scripts/conversion-matrix.py verify "$local_run/manifest.json" "$local_run/exports" |
+    tee "$local_run/report.txt"
 ```
 
 Keep all test inputs and exports under `Download/VideoConverterTest/<run-id>/`.
@@ -44,8 +44,8 @@ audio from the phone and host. Keep the inputs, manifest, and report.
 
 ```bash
 for output in MP3 AAC ALAC OPUS VORBIS FLAC WAV checks ui-exports; do
-    rtk run adb shell "rm -rf '$phone_run/$output'"
-    rtk run rm -rf -- "$local_run/exports/$output"
+    adb shell "rm -rf '$phone_run/$output'"
+    rm -rf -- "$local_run/exports/$output"
 done
 ```
 
@@ -89,12 +89,12 @@ collisions, retry settings, preset storage, and all seven encoders with
 normalization enabled.
 
 ```bash
-rtk run adb shell am instrument -w -e workflow true org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
-loudness_run=$(rtk run mktemp -d)
-rtk run adb exec-out run-as org.videoconverter.app tar -cf - -C files/workflow-verification . |
-    rtk run tar -xf - -C "$loudness_run"
+adb shell am instrument -w -e workflow true org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
+loudness_run=$(mktemp -d)
+adb exec-out run-as org.videoconverter.app tar -cf - -C files/workflow-verification . |
+    tar -xf - -C "$loudness_run"
 for output in target-14.wav target-16.wav target-23.wav trimmed.wav peak.wav tail-peak.wav; do
-    rtk run ffmpeg -hide_banner -i "$loudness_run/$output" \
+    ffmpeg -hide_banner -i "$loudness_run/$output" \
         -af ebur128=peak=sample+true:framelog=verbose -f null -
 done
 ```
