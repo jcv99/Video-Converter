@@ -87,8 +87,8 @@ from scratch.
 ## Risks
 
 - The native build is the long pole. FFmpeg, LAME and the Xiph libraries are
-  compiled for `arm64-v8a` and `x86_64`, which takes roughly 30 to 50 minutes on
-  a four core runner. The cache removes that cost on later runs.
+  compiled for `arm64-v8a` and `x86_64`, which takes about four minutes on a
+  four core runner. The cache removes that cost on later runs.
 - The runner needs about 6 GB of free disk for the native build tree.
 - `platforms;android-37.0` is the package id of the platform this project
   compiles against. The install step falls back to `platforms;android-37` when
