@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/build/native
-          key: native-${{ runner.os }}-${{ hashFiles('scripts/build-native.sh', 'native/converter.c') }}
+          key: native-${{ runner.os }}-${{ hashFiles('app/build.gradle.kts', 'scripts/build-native.sh', 'native/converter.c') }}
 
       - name: Restore the release keystore
         env:

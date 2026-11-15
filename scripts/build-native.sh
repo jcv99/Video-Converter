@@ -3,6 +3,8 @@ set -euo pipefail
 ndk=$(realpath "$1")
 mkdir -p "$2"
 out=$(realpath "$2")
+api="$3"
+bridge="$(dirname "$0")/../native/converter.c"
 toolchain="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
 jobs=${VIDEO_CONVERTER_JOBS:-8}
 
@@ -33,17 +35,26 @@ fetch https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.xz \
     b33cc4934322bcbf6efcbacf49e3ca01aadbea4114ec9589d1b1e9d20f72954b "$out/libvorbis-1.3.7.tar.xz"
 fetch https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz \
     65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1 "$out/opus-1.5.2.tar.gz"
-build_key=$(sed -n '/^    # Build Xiph/,/^    libs=/p' "$0" | sha256sum | cut -d ' ' -f1)
-
 for abi in arm64-v8a x86_64; do
     case "$abi" in
         arm64-v8a) arch=aarch64; triple=aarch64-linux-android ;;
         x86_64) arch=x86_64; triple=x86_64-linux-android ;;
     esac
     work="$out/$abi"
+    build_key=$(
+        {
+            printf '%s\n' "$api" "$abi"
+            sha256sum < "$ndk/source.properties"
+            sha256sum < "$0"
+            sha256sum < "$bridge"
+        } | sha256sum | cut -d ' ' -f1
+    )
+    if [[ $(cat "$work/build-key" 2>/dev/null) != "$build_key" ]]; then
+        rm -rf -- "$work" "$out/jniLibs/$abi"
+    fi
     mkdir -p "$work" "$out/jniLibs/$abi"
-    cc="$toolchain/${triple}35-clang"
-    cxx="$toolchain/${triple}35-clang++"
+    cc="$toolchain/${triple}${api}-clang"
+    cxx="$toolchain/${triple}${api}-clang++"
     prefix="$work/install"
 
     if [[ ! -f "$prefix/lib/libmp3lame.so" ]]; then
@@ -61,7 +72,7 @@ for abi in arm64-v8a x86_64; do
     fi
 
     # Build Xiph libraries as PIC archives linked into the FFmpeg shared libraries.
-    if [[ ! -f "$prefix/lib/libavformat.so" || $(cat "$work/ffmpeg-build-key" 2>/dev/null) != "$build_key" ]]; then
+    if [[ ! -f "$prefix/lib/libavformat.so" ]]; then
         for library in libogg-1.3.6 libvorbis-1.3.7 opus-1.5.2; do
             case "$library" in opus-*) extension=gz ;; *) extension=xz ;; esac
             tar -xf "$out/$library.tar.$extension" -C "$work"
@@ -97,14 +108,13 @@ for abi in arm64-v8a x86_64; do
             make -j"$jobs"
             make install
         )
-        printf "%s\n" "$build_key" > "$work/ffmpeg-build-key"
     fi
 
     libs="$out/jniLibs/$abi"
     # Android accepts only names ending in .so. Rewrite SONAMEs and dependency names
     # together after linking, using equal-length padded replacements in the ELF strings.
     "$cc" -shared -fPIC -O2 -Wall -Wextra -Werror -I"$prefix/include" \
-        -L"$prefix/lib" "$(dirname "$0")/../native/converter.c" \
+        -L"$prefix/lib" "$bridge" \
         -lavfilter -lavformat -lavcodec -lswresample -lavutil -lmp3lame -lm -llog -o "$work/libconverter.so"
     python3 - "$prefix" "$work" "$libs" <<'PY'
 import pathlib
@@ -127,4 +137,5 @@ for path in files:
         data = data.replace(old + b"\0", new.ljust(len(old), b"\0") + b"\0")
     (output / path.name).write_bytes(data)
 PY
+    printf '%s\n' "$build_key" > "$work/build-key"
 done
