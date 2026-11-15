@@ -111,10 +111,10 @@ cancel active batches before uninstalling and save any app settings you need.
 3. Run the source and APK checks in the [F-Droid build environment](https://f-droid.org/docs/Submitting_to_F-Droid_Quick_Start_Guide/).
 
    ```bash
-   rtk run fdroid rewritemeta org.videoconverter.app
-   rtk run fdroid lint org.videoconverter.app
-   rtk run fdroid checkupdates --allow-dirty org.videoconverter.app
-   rtk run fdroid build org.videoconverter.app:200
+   fdroid rewritemeta org.videoconverter.app
+   fdroid lint org.videoconverter.app
+   fdroid checkupdates --allow-dirty org.videoconverter.app
+   fdroid build org.videoconverter.app:200
    ```
 
 4. Submit the recipe to `fdroiddata` once the app meets the

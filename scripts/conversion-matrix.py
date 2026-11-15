@@ -58,7 +58,7 @@ TARGETS = {
 
 
 def run(*args):
-    return subprocess.run(["rtk", "bypass", *map(str, args)], capture_output=True, check=True).stdout
+    return subprocess.run(list(map(str, args)), capture_output=True, check=True).stdout
 
 
 def ffmpeg(*args):
