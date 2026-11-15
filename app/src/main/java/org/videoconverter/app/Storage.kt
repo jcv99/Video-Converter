@@ -2,7 +2,9 @@ package org.videoconverter.app
 
 import android.content.ContentValues
 import android.content.Context
+import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.Environment
@@ -122,7 +124,7 @@ internal object Storage {
             }
         }
         input.use { descriptor ->
-            staging.outputStream().use { destination -> readPipe(descriptor.fileDescriptor, destination, checkActive) }
+            staging.outputStream().use { destination -> readPipe(descriptor, destination, checkActive) }
             descriptor.checkError()
         }
         return ParcelFileDescriptor.open(staging, ParcelFileDescriptor.MODE_READ_ONLY)
@@ -143,7 +145,7 @@ internal object Storage {
             ?: throw IOException("Could not open this file.")
         ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { source ->
             file.outputStream().use { destination ->
-                if (isPipe(descriptor.fileDescriptor)) readPipe(descriptor.fileDescriptor, destination, checkActive)
+                if (isPipe(descriptor.fileDescriptor)) readPipe(descriptor, destination, checkActive)
                 else copy(source, destination, checkActive)
                 destination.fd.sync()
             }
@@ -158,11 +160,9 @@ internal object Storage {
         throw IOException(error)
     }
 
-    private fun nonblocking(fd: FileDescriptor) = try {
-        val flags = Os.fcntlInt(fd, OsConstants.F_GETFL, 0)
-        Os.fcntlInt(fd, OsConstants.F_SETFL, flags or OsConstants.O_NONBLOCK)
-    } catch (error: ErrnoException) {
-        throw IOException(error)
+    private fun nonblocking(descriptor: ParcelFileDescriptor) {
+        val error = NativeConverter.setNonblocking(descriptor.fd)
+        if (error != 0) throw IOException(ErrnoException("fcntl", error))
     }
 
     private fun pipeOperation(fd: FileDescriptor, events: Int, checkActive: () -> Unit, operation: () -> Int): Int {
@@ -180,8 +180,9 @@ internal object Storage {
         }
     }
 
-    internal fun readPipe(fd: FileDescriptor, output: OutputStream, checkActive: () -> Unit) {
-        nonblocking(fd)
+    internal fun readPipe(descriptor: ParcelFileDescriptor, output: OutputStream, checkActive: () -> Unit) {
+        nonblocking(descriptor)
+        val fd = descriptor.fileDescriptor
         val buffer = ByteArray(128 * 1024)
         while (true) {
             val count = pipeOperation(fd, OsConstants.POLLIN, checkActive) { Os.read(fd, buffer, 0, buffer.size) }
@@ -190,8 +191,9 @@ internal object Storage {
         }
     }
 
-    internal fun writePipe(fd: FileDescriptor, input: InputStream, checkActive: () -> Unit) {
-        nonblocking(fd)
+    internal fun writePipe(descriptor: ParcelFileDescriptor, input: InputStream, checkActive: () -> Unit) {
+        nonblocking(descriptor)
+        val fd = descriptor.fileDescriptor
         val buffer = ByteArray(128 * 1024)
         while (true) {
             checkActive()
@@ -246,14 +248,24 @@ internal object Storage {
         return parent
     }
 
-    private fun downloadQuery(path: String, name: String? = null) = Bundle().apply {
+    // Android 10 requires the URI flag to include pending Downloads rows.
+    @Suppress("DEPRECATION")
+    private fun queryDownloads(context: Context, columns: Array<String>, path: String, name: String? = null): Cursor? {
         val pathColumn = MediaStore.Downloads.RELATIVE_PATH
         val nameColumn = MediaStore.Downloads.DISPLAY_NAME
-        putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION,
-            if (name == null) "$pathColumn = ?" else "$pathColumn = ? AND $nameColumn = ?")
-        putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
-            if (name == null) arrayOf(path) else arrayOf(path, name))
-        putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE)
+        val query = Bundle().apply {
+            putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION,
+                if (name == null) "$pathColumn = ?" else "$pathColumn = ? AND $nameColumn = ?")
+            putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                if (name == null) arrayOf(path) else arrayOf(path, name))
+        }
+        val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            query.putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE)
+            downloads
+        } else {
+            MediaStore.setIncludePending(downloads)
+        }
+        return context.contentResolver.query(uri, columns, query, null)
     }
 
     fun planOutput(
@@ -268,7 +280,7 @@ internal object Storage {
         val parent = folder?.let { resolveDirectory(context, it, namesInPath) }
         val path = relativePath.takeIf { parent == null }
         val cursor = if (parent == null) {
-            resolver.query(downloads, arrayOf(MediaStore.Downloads.DISPLAY_NAME), downloadQuery(relativePath), null)
+            queryDownloads(context, arrayOf(MediaStore.Downloads.DISPLAY_NAME), relativePath)
         } else {
             val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
             resolver.query(children, arrayOf(Document.COLUMN_DISPLAY_NAME), null, null, null)
@@ -302,8 +314,8 @@ internal object Storage {
 
     fun findReservedDownload(context: Context, location: OutputLocation): Uri? {
         val path = location.path ?: return null
-        val cursor = context.contentResolver.query(downloads, arrayOf(MediaStore.Downloads._ID),
-            downloadQuery(path, location.allocatedName), null) ?: throw IOException("Could not look up the output.")
+        val cursor = queryDownloads(context, arrayOf(MediaStore.Downloads._ID), path, location.allocatedName)
+            ?: throw IOException("Could not look up the output.")
         return cursor.use {
             if (it.count == 1 && it.moveToFirst()) android.content.ContentUris.withAppendedId(downloads, it.getLong(0))
             else if (it.count == 0) null
@@ -348,7 +360,7 @@ internal object Storage {
                         activity = android.os.SystemClock.elapsedRealtime()
                     }
                 }
-                readPipe(descriptor.fileDescriptor, meter) {
+                readPipe(descriptor, meter) {
                     if (android.os.SystemClock.elapsedRealtime() - activity >= 5_000)
                         throw IOException("The output provider stopped responding.")
                 }
@@ -415,7 +427,7 @@ internal object Storage {
             ?: throw IOException("Could not write the output file.")
         ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { destination ->
             file.inputStream().use { source ->
-                if (isPipe(descriptor.fileDescriptor)) writePipe(descriptor.fileDescriptor, source, checkActive)
+                if (isPipe(descriptor.fileDescriptor)) writePipe(descriptor, source, checkActive)
                 else copy(source, destination, checkActive)
             }
             descriptor.checkError()

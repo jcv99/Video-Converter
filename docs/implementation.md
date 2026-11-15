@@ -1,6 +1,6 @@
 # Android conversion tests
 
-Use a connected device on Android 11 or newer (API 30+; Android 17 recommended) and the debug signing key used by any installed
+Use an Android 10 (API 29) device or emulator for the minimum-version check and a recent ARM64 device for regression testing. Use the debug signing key of any installed
 copy of Video Converter. Run from the project directory with FFmpeg, FFprobe,
 Python 3, ADB, and RTK available.
 
@@ -22,7 +22,9 @@ rtk run adb shell "cd $phone_run && sha256sum manifest.json inputs/*" > "$local_
 )
 rtk run adb shell run-as org.videoconverter.app mkdir -p files/conversion-matrix
 rtk run adb shell run-as org.videoconverter.app rm -rf files/conversion-matrix/inputs
-rtk run tar -C "$local_run" -cf - inputs midstream.aac |
+fixture_uid=$(rtk run adb shell run-as org.videoconverter.app id -u)
+fixture_gid=$(rtk run adb shell run-as org.videoconverter.app id -g)
+rtk run tar --owner="$fixture_uid" --group="$fixture_gid" --numeric-owner -C "$local_run" -cf - inputs midstream.aac |
     rtk run adb shell -T 'run-as org.videoconverter.app tar -xf - -C files/conversion-matrix'
 rtk run adb shell "echo $run | run-as org.videoconverter.app tee files/conversion-matrix/run-id"
 rtk run adb shell am instrument -w org.videoconverter.app.test/org.videoconverter.app.ConversionMatrixTest
